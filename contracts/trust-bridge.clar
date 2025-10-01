@@ -189,3 +189,77 @@
   (begin
     ;; Validate deal exists
     (asserts! (validate-deal-id deal-id) ERR-INVALID-DEAL-ID)
+
+    (let 
+      (
+        (deal (unwrap! 
+          (map-get? deals { deal-id: deal-id }) 
+          ERR-DEAL-NOT-EXIST
+        ))
+        (initiator (get initiator deal))
+        (counterparty (get counterparty deal))
+      )
+      ;; Verify rater is the counterparty
+      (asserts! 
+        (is-eq tx-sender counterparty) 
+        ERR-NOT-AUTHORIZED
+      )
+      (asserts! (> rating u0) ERR-BAD-RATING)
+
+      ;; Update initiator's trust profile
+      (map-set trust-profiles 
+        { address: initiator }
+        {
+          cumulative-score: (+ 
+            (get cumulative-score 
+              (default-to 
+                { cumulative-score: u0, deal-count: u0 } 
+                (map-get? trust-profiles { address: initiator })
+              )
+            )
+            rating
+          ),
+          deal-count: (+ 
+            (get deal-count 
+              (default-to 
+                { cumulative-score: u0, deal-count: u0 } 
+                (map-get? trust-profiles { address: initiator })
+              )
+            )
+            u1
+          )
+        }
+      )
+
+      ;; Update deal with rating
+      (map-set deals 
+        { deal-id: deal-id }
+        (merge deal { trust-score: rating })
+      )
+
+      (ok true)
+    )
+  )
+)
+
+;; ============================================
+;; Read-Only Functions - Data Queries
+;; ============================================
+
+;; Retrieve user's trust profile and reputation score
+(define-read-only (get-trust-profile (address principal))
+  (default-to 
+    { cumulative-score: u0, deal-count: u0 }
+    (map-get? trust-profiles { address: address })
+  )
+)
+
+;; Retrieve payment details by ID
+(define-read-only (get-payment-info (payment-id uint))
+  (map-get? payments { id: payment-id })
+)
+
+;; Retrieve deal information by ID
+(define-read-only (get-deal-info (deal-id uint))
+  (map-get? deals { deal-id: deal-id })
+)
